@@ -27,3 +27,4 @@ AI/ML / 传统ML · 园区夜间水表异常聚类与巡检工单排序
 | TRAP-52 | 水表簇 id 任意编号 | 按标签直接比 | 组合矩阵全局最优一对一 | `src/meterloss/consumption_clusters/medoids.py` | `tests/test_consumption_clusters.py::test_assignment_after_permutation` |
 | TRAP-53 | 请求同时带大流量表 | 重新计算批次尺度 | 冻结 medoid 和统计量 | `src/meterloss/consumption_clusters/medoids.py` | `tests/test_consumption_clusters.py::test_immutable_inference_score` |
 | TRAP-54 | 抄表策略版本更新 | 沿用旧签发摘要 | 源版本加入签名 | `src/meterloss/water_balance/audit.py` | `tests/test_water_balance.py::test_upstream_changes_dispatch_stamp` |
+| TRAP-60 | 基线不足时跨表借样及供样表依赖 | 直接混合分布，或缺任一供样表仍自动分级 | 同簇中位数对齐、排除不可比夜窗、逐供样表缺表复算 | `src/meterloss/loss_screen/scoring.py` | `tests/test_loss_screen.py` |

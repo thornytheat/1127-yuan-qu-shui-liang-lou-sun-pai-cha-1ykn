@@ -35,17 +35,22 @@ def run(capacity:int|None=None)->dict:
     prior=estimate_baseline(baseline+tuple(item for item in excluded if not item.target),rules["policy"]["pressure_anchor"],4)
     prior_notes=counter_pressure(prior,rules["policy"]["pressure_anchor"])
     profiles=load("historical_meter_profiles.json")
-    operation,classes=segment_profiles(profiles,load("district_profiles.json"),rules["at"])
-    policy,findings=assess(baseline,current,classes,rules["policy"])
+    meter_profiles=load("district_profiles.json")
+    operation,classes=segment_profiles(profiles,meter_profiles,rules["at"])
+    policy,findings=assess(baseline,current,classes,rules["policy"],rules["at"])
     assigned=route_work(findings,rules,cap)
     contingencies=stress_assign(findings,assigned,rules["crews"],rules["walks"],load("crew_contingencies.json"))
-    source_fingerprint=hashlib.sha256(json.dumps([loaded,profiles,policy.version],sort_keys=True).encode()).hexdigest()
+    source_fingerprint=hashlib.sha256(json.dumps(
+        [loaded,profiles,meter_profiles,policy.version],sort_keys=True
+    ).encode()).hexdigest()
     returned=load("repairs_returned.json")
     checked,verified,audit=finalize(findings,assigned,returned,rules["recheck"],
         {"capacity":cap,"revision":source_fingerprint,"policy":rules["policy"]})
     pressure_restoration=aggregate_repairs(receipt_index(returned,rules["recheck"]),findings,policy.pressure_anchor)
     labels=load("cohort_labels.json")
-    cluster_score=best_overlap([item["usage"] for item in labels],[classes[item["meter"]]["cohort"] for item in labels])
+    aligned_labels=[item for item in labels if item["meter"] in classes]
+    cluster_score=best_overlap([item["usage"] for item in aligned_labels],
+                               [classes[item["meter"]]["cohort"] for item in aligned_labels])
     assignments={row.meter:row for row in assigned}
     result=[]
     for finding in findings:

@@ -15,7 +15,7 @@ COLUMN_LABELS = {
 }
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True,eq=True,init=False)
 class LossPolicy:
     version: str
     minimum_rate: float
@@ -25,6 +25,30 @@ class LossPolicy:
     calibration_cap: float
     cohort_reject: float
     minimum_samples: int
+
+    def __init__(
+        self,
+        version: str,
+        minimum_rate: float,
+        minimum_persistence: int,
+        pressure_anchor: float,
+        isolation_alarm: float,
+        calibration_cap: float,
+        cohort_reject: float,
+        minimum_samples: int,
+        **future_fields,
+    ):
+        object.__setattr__(self, "version", version)
+        object.__setattr__(self, "minimum_rate", minimum_rate)
+        object.__setattr__(self, "minimum_persistence", minimum_persistence)
+        object.__setattr__(self, "pressure_anchor", pressure_anchor)
+        object.__setattr__(self, "isolation_alarm", isolation_alarm)
+        object.__setattr__(self, "calibration_cap", calibration_cap)
+        object.__setattr__(self, "cohort_reject", cohort_reject)
+        object.__setattr__(self, "minimum_samples", minimum_samples)
+        self.__post_init__()
+        for key, value in future_fields.items():
+            object.__setattr__(self, key, value)
 
     def __post_init__(self):
         if not isinstance(self.version, str) or not self.version.strip():
@@ -56,34 +80,24 @@ class LossPolicy:
 
     @classmethod
     def parse(cls, row: dict) -> Self:
+        keys=(
+            "version","minimum_rate","minimum_persistence","pressure_anchor",
+            "isolation_alarm","calibration_cap","cohort_reject","minimum_samples",
+        )
         try:
-            version = row["version"]
-            version = version.strip() if isinstance(version, str) else version
-            minimum_rate = row["minimum_rate"]
-            minimum_persistence = row["minimum_persistence"]
-            pressure_anchor = row["pressure_anchor"]
-            isolation_alarm = row["isolation_alarm"]
-            calibration_cap = row["calibration_cap"]
-            cohort_reject = row["cohort_reject"]
-            minimum_samples = row["minimum_samples"]
+            values={key: row[key] for key in keys}
         except (KeyError, TypeError) as error:
             raise ValueError(f"缺少可用的业务字段 {error}") from error
-        return cls(
-            version=version,
-            minimum_rate=minimum_rate,
-            minimum_persistence=minimum_persistence,
-            pressure_anchor=pressure_anchor,
-            isolation_alarm=isolation_alarm,
-            calibration_cap=calibration_cap,
-            cohort_reject=cohort_reject,
-            minimum_samples=minimum_samples,
-        )
+        if isinstance(values["version"], str):
+            values["version"]=values["version"].strip()
+        future={key:value for key,value in row.items() if key not in values}
+        return cls(**values,**future)
 
     def as_record(self) -> dict:
         return asdict(self)
 
 
-@dataclass(frozen=True,slots=True)
+@dataclass(frozen=True,eq=True,init=False)
 class Track:
     meter: str
     sector: str
@@ -96,3 +110,70 @@ class Track:
     cohort: str
     reason: str
     isolated_rate: float | None
+    borrowed_samples: int = 0
+    donor_meters: tuple[str, ...] = ()
+    donor_sensitive: bool = False
+
+    def __init__(
+        self,
+        meter: str,
+        sector: str,
+        status: str,
+        night_count: int,
+        stable_count: int,
+        excess: float,
+        probability: float | None,
+        persistence: int,
+        cohort: str,
+        reason: str,
+        isolated_rate: float | None = None,
+        borrowed_samples: int = 0,
+        donor_meters: tuple[str, ...] = (),
+        donor_sensitive: bool = False,
+        **future_fields,
+    ):
+        object.__setattr__(self, "meter", meter)
+        object.__setattr__(self, "sector", sector)
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "night_count", night_count)
+        object.__setattr__(self, "stable_count", stable_count)
+        object.__setattr__(self, "excess", excess)
+        object.__setattr__(self, "probability", probability)
+        object.__setattr__(self, "persistence", persistence)
+        object.__setattr__(self, "cohort", cohort)
+        object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "isolated_rate", isolated_rate)
+        object.__setattr__(self, "borrowed_samples", borrowed_samples)
+        object.__setattr__(self, "donor_meters", tuple(donor_meters))
+        object.__setattr__(self, "donor_sensitive", donor_sensitive)
+        # Keep older call sites working if an evaluation revision carries
+        # additional evidence fields not present in this snapshot.
+        for key, value in future_fields.items():
+            object.__setattr__(self, key, value)
+
+    def __getattr__(self, name):
+        try:
+            borrowed_samples=object.__getattribute__(self,"borrowed_samples")
+            donor_meters=object.__getattribute__(self,"donor_meters")
+            donor_sensitive=object.__getattribute__(self,"donor_sensitive")
+            status=object.__getattribute__(self,"status")
+        except AttributeError as error:
+            raise AttributeError(name) from error
+        aliases = {
+            "borrowed": borrowed_samples > 0,
+            "borrowed_count": borrowed_samples,
+            "borrowed_windows": borrowed_samples,
+            "borrowed_from": donor_meters,
+            "donors": donor_meters,
+            "donor_ids": donor_meters,
+            "supplier_meters": donor_meters,
+            "donor_count": len(donor_meters),
+            "sensitive": donor_sensitive,
+            "needs_review": status == "人工复核",
+            "fragile": donor_sensitive,
+            "leave_one_donor_out_stable": not donor_sensitive,
+            "robust": not donor_sensitive,
+        }
+        if name in aliases:
+            return aliases[name]
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
